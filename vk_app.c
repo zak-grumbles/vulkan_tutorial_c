@@ -39,6 +39,11 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(
     void* pUserData
 );
 
+/**
+ * Initializes the vulkan app struct.
+ * Params:
+ *   app - vulkan app struct
+ */
 void init_vk_app(vk_app* app) {
     init_window_(app);
 
@@ -52,12 +57,24 @@ void init_vk_app(vk_app* app) {
     }
 }
 
+/**
+ * Runs the main loop of the given vulkan app.
+ * 
+ * Params:
+ *   app - vulkan app
+ */
 void run_vk_app(vk_app* app) {
     while(!glfwWindowShouldClose(app->app_window)) {
         glfwPollEvents();
     }
 }
 
+/**
+ * Cleans up the vk app struct.
+ * 
+ * Params:
+ *   app - vulkan app
+ */
 void cleanup_vk_app(vk_app* app) {
 
     vkDestroyDevice(app->device, NULL);
@@ -70,6 +87,12 @@ void cleanup_vk_app(vk_app* app) {
     glfwTerminate();
 }
 
+/**
+ * Initializes the GLFW window for the vulkan app.
+ * 
+ * Params:
+ *   app - vulkan app
+ */
 void init_window_(vk_app* app) {
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
@@ -77,6 +100,13 @@ void init_window_(vk_app* app) {
     app->app_window = glfwCreateWindow(800, 600, "Vulkan Window", NULL, NULL);
 }
 
+/**
+ * Initializes all of the necessary vulkan structs and
+ * data.
+ * 
+ * Params:
+ *   app - vulkan app
+ */
 int init_vulkan_(vk_app* app) {
     int success = VK_SUCCESS;
 
@@ -92,7 +122,15 @@ int init_vulkan_(vk_app* app) {
     return success;
 }
 
-
+/**
+ * Returns the extensions required for vulkan on this machine.
+ * 
+ * Params:
+ *   count - Set to the total number of extensions
+ * 
+ * Returns:
+ *   array of strings with length 'count'
+ */
 char** get_required_extensions_(uint32_t* count) {
     uint32_t glfw_extensions_count = 0;
     const char** glfw_extensions = glfwGetRequiredInstanceExtensions(&glfw_extensions_count);
@@ -123,6 +161,15 @@ char** get_required_extensions_(uint32_t* count) {
     return exts;
 }
 
+/**
+ * Initializes the vulkan instance.
+ * 
+ * Params:
+ *   app - vulkan app
+ * 
+ * Returns:
+ *   int indicating success.
+ */
 int init_instance_(vk_app* app) {
     VkApplicationInfo app_info = {};
     app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -133,16 +180,6 @@ int init_instance_(vk_app* app) {
     app_info.apiVersion = VK_API_VERSION_1_0;
 
     // get required extensions
-    /*
-    uint32_t glfw_extension_count = 0;
-    const char** glfw_extensions;
-
-    glfw_extensions = glfwGetRequiredInstanceExtensions(&glfw_extension_count);
-    printf("Found %i GLFW extensions:\n", glfw_extension_count);
-    for(int i = 0; i < glfw_extension_count; i++) {
-        printf("  - %s\n", glfw_extensions[i]);
-    }
-    */
     uint32_t ext_count = 0;
     char** required_exts = get_required_extensions_(&ext_count);
 
@@ -215,6 +252,15 @@ int init_instance_(vk_app* app) {
     return result == VK_SUCCESS;
 }
 
+/**
+ * Sets up the debug utils messenger callback.
+ * 
+ * Params:
+ *   app - vulkan app
+ * 
+ * Returns:
+ *   int indicating success
+ */
 int setup_debug_messenger_(vk_app* app) {
     VkDebugUtilsMessengerCreateInfoEXT create_info = {};
     
@@ -246,6 +292,15 @@ int setup_debug_messenger_(vk_app* app) {
     }
 }
 
+/**
+ * Creates the window surface.
+ * 
+ * Params:
+ *   app - vulkan app
+ * 
+ * Returns:
+ *   int indicating success
+ */
 int create_surface(vk_app* app) {
     VkResult result = glfwCreateWindowSurface(app->instance, app->app_window, NULL, &app->surface);
 
@@ -256,6 +311,15 @@ int create_surface(vk_app* app) {
     return result == VK_SUCCESS;
 }
 
+/**
+ * Selects a physical device to use for the app.
+ * 
+ * Params:
+ *   app - vulkan app
+ * 
+ * Returns:
+ *   int indicating success
+ */
 int pick_physical_device_(vk_app* app) {
     app->physical_device = VK_NULL_HANDLE;
 
@@ -284,6 +348,15 @@ int pick_physical_device_(vk_app* app) {
     return 1;
 }
 
+/**
+ * Determines if a physical device meets our criteria.
+ * 
+ * Params:
+ *   device - physical device
+ * 
+ * Returns:
+ *   int indicating validity
+ */
 int is_device_suitable_(VkPhysicalDevice device) {
     VkPhysicalDeviceProperties props;
     vkGetPhysicalDeviceProperties(device, &props);
@@ -303,6 +376,16 @@ int is_device_suitable_(VkPhysicalDevice device) {
     return valid;
 }
 
+/**
+ * Selects appropriate queue families for the given
+ * physical device.
+ * 
+ * Params:
+ *   device - physical device
+ * 
+ * Returns:
+ *   queue_families struct containing family indices.
+ */
 queue_families find_queue_families_(VkPhysicalDevice device) {
     queue_families indices;
     indices.is_complete = 0;
@@ -334,6 +417,15 @@ queue_families find_queue_families_(VkPhysicalDevice device) {
     return indices;
 }
 
+/**
+ * Creates the logical vulkan device for use in the app.
+ * 
+ * Params:
+ *   app - vulkan app
+ * 
+ * Returns:
+ *   int indicating success.
+ */
 int create_logical_device_(vk_app* app) {
     queue_families indices = find_queue_families_(app->physical_device);
 
@@ -376,6 +468,9 @@ int create_logical_device_(vk_app* app) {
     return success == VK_SUCCESS;
 }
 
+/**
+ * Debug utils messenger callback method.
+ */
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(
     VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
     VkDebugUtilsMessageTypeFlagsEXT messageType,

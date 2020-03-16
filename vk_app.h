@@ -1,11 +1,18 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
+/**
+ * Holds indices of graphics families for a single physical device.
+ */
 typedef struct {
     uint32_t graphics_family_index;
     int is_complete;
 } queue_families;
 
+/**
+ * Represents a vulkan application. Holds all relevant structs and
+ * data.
+ */
 typedef struct {
     GLFWwindow* app_window;
     VkInstance instance;
