@@ -24,6 +24,8 @@ int init_instance_(vk_app*);
 
 int setup_debug_messenger_(vk_app*);
 
+int create_surface_(vk_app*);
+
 int pick_physical_device_(vk_app*);
 int is_device_suitable_(VkPhysicalDevice device);
 queue_families find_queue_families_(VkPhysicalDevice device);
@@ -57,7 +59,10 @@ void run_vk_app(vk_app* app) {
 }
 
 void cleanup_vk_app(vk_app* app) {
+
     vkDestroyDevice(app->device, NULL);
+
+    vkDestroySurfaceKHR(app->instance, app->surface, NULL);
     vkDestroyInstance(app->instance, NULL);
     
     glfwDestroyWindow(app->app_window);
@@ -87,36 +92,6 @@ int init_vulkan_(vk_app* app) {
     return success;
 }
 
-int setup_debug_messenger_(vk_app* app) {
-    VkDebugUtilsMessengerCreateInfoEXT create_info = {};
-    
-    create_info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-    create_info.messageSeverity = 
-        VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | 
-        VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
-        VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-    create_info.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | 
-        VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
-        VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
-    create_info.pfnUserCallback = debug_cb;
-    create_info.pUserData = NULL;
-
-    PFN_vkCreateDebugUtilsMessengerEXT func = 
-        (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(
-            app->instance, "vkCreateDebugUtilsMessengerEXT"
-        );
-
-    if(func != NULL) {
-        VkResult result = func(app->instance, &create_info, NULL, &app->debug_messenger);
-
-        return result == VK_SUCCESS;
-    }
-    else
-    {
-        fprintf(stderr, "Could not find debug utils func\n");
-        return 0;
-    }
-}
 
 char** get_required_extensions_(uint32_t* count) {
     uint32_t glfw_extensions_count = 0;
@@ -240,22 +215,45 @@ int init_instance_(vk_app* app) {
     return result == VK_SUCCESS;
 }
 
-void query_extensions_() {
-    uint32_t extension_count = 0;
+int setup_debug_messenger_(vk_app* app) {
+    VkDebugUtilsMessengerCreateInfoEXT create_info = {};
+    
+    create_info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+    create_info.messageSeverity = 
+        VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | 
+        VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+        VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+    create_info.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | 
+        VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+        VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+    create_info.pfnUserCallback = debug_cb;
+    create_info.pUserData = NULL;
 
-    vkEnumerateInstanceExtensionProperties(NULL, &extension_count, NULL);
+    PFN_vkCreateDebugUtilsMessengerEXT func = 
+        (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(
+            app->instance, "vkCreateDebugUtilsMessengerEXT"
+        );
 
-    printf("Found %i supported extensions:\n", extension_count);
+    if(func != NULL) {
+        VkResult result = func(app->instance, &create_info, NULL, &app->debug_messenger);
 
-    VkExtensionProperties* extensions = (VkExtensionProperties*)malloc(extension_count * sizeof(VkExtensionProperties));
-    vkEnumerateInstanceExtensionProperties(NULL, &extension_count, extensions);
+        return result == VK_SUCCESS;
+    }
+    else
+    {
+        fprintf(stderr, "Could not find debug utils func\n");
+        return 0;
+    }
+}
 
-    for(int i = 0; i < extension_count; i++) {
-        printf("  - %s\n", extensions[i].extensionName);
+int create_surface(vk_app* app) {
+    VkResult result = glfwCreateWindowSurface(app->instance, app->app_window, NULL, &app->surface);
+
+    if(result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create window surface\n");
     }
 
-    free(extensions);
-    extensions = NULL;
+    return result == VK_SUCCESS;
 }
 
 int pick_physical_device_(vk_app* app) {
@@ -372,6 +370,8 @@ int create_logical_device_(vk_app* app) {
     if(success != VK_SUCCESS) {
         fprintf(stderr, "Unable to create logical device\n");
     }
+
+    vkGetDeviceQueue(app->device, indices.graphics_family_index, 0, &app->graphics_queue);
 
     return success == VK_SUCCESS;
 }

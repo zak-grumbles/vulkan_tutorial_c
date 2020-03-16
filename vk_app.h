@@ -9,9 +9,11 @@ typedef struct {
 typedef struct {
     GLFWwindow* app_window;
     VkInstance instance;
+    VkDebugUtilsMessengerEXT debug_messenger;
+    VkSurfaceKHR surface;
     VkPhysicalDevice physical_device;
     VkDevice device;
-    VkDebugUtilsMessengerEXT debug_messenger;
+    VkQueue graphics_queue;
 } vk_app;
 
 // "Public" interface
