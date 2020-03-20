@@ -7,7 +7,8 @@
  * Holds indices of graphics families for a single physical device.
  */
 typedef struct {
-    uint32_t graphics_family_index;
+    int32_t graphics_family_index;
+    int32_t present_family_index;
     bool is_complete;
 } queue_families;
 
@@ -23,6 +24,7 @@ typedef struct {
     VkPhysicalDevice physical_device;
     VkDevice device;
     VkQueue graphics_queue;
+    VkQueue present_queue;
 } vk_app;
 
 // "Public" interface

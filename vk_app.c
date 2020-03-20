@@ -19,7 +19,7 @@ const uint32_t VALIDATION_LAYER_COUNT = 1;
 void init_window_(vk_app*);
 bool init_vulkan_(vk_app*);
 
-char** get_required_extensions_(uint32_t* count);
+char** get_required_extensions_(uint32_t*);
 bool init_instance_(vk_app*);
 
 bool setup_debug_messenger_(vk_app*);
@@ -28,16 +28,16 @@ void cleanup_debug_messenger_(vk_app*);
 bool create_surface_(vk_app*);
 
 bool pick_physical_device_(vk_app*);
-bool is_device_suitable_(VkPhysicalDevice device);
-queue_families find_queue_families_(VkPhysicalDevice device);
+bool is_device_suitable_(VkPhysicalDevice, VkSurfaceKHR);
+queue_families find_queue_families_(VkPhysicalDevice, VkSurfaceKHR);
 
 bool create_logical_device_(vk_app*);
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(
-    VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-    VkDebugUtilsMessageTypeFlagsEXT messageType,
-    const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-    void* pUserData
+    VkDebugUtilsMessageSeverityFlagBitsEXT,
+    VkDebugUtilsMessageTypeFlagsEXT,
+    const VkDebugUtilsMessengerCallbackDataEXT*,
+    void*
 );
 
 /**
@@ -370,7 +370,7 @@ bool pick_physical_device_(vk_app* app) {
 
     printf("Found %i potential physical devices:\n", device_count);
     for(uint32_t i = 0; i < device_count; i++) {
-        if(is_device_suitable_(devices[i])) {
+        if(is_device_suitable_(devices[i], app->surface)) {
             app->physical_device = devices[i];
             break;
         }
@@ -391,7 +391,7 @@ bool pick_physical_device_(vk_app* app) {
  * Returns:
  *   bool indicating validity
  */
-bool is_device_suitable_(VkPhysicalDevice device) {
+bool is_device_suitable_(VkPhysicalDevice device, VkSurfaceKHR surface) {
     VkPhysicalDeviceProperties props;
     vkGetPhysicalDeviceProperties(device, &props);
 
@@ -401,7 +401,7 @@ bool is_device_suitable_(VkPhysicalDevice device) {
     bool valid = props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU &&
         features.geometryShader;
 
-    queue_families families = find_queue_families_(device);
+    queue_families families = find_queue_families_(device, surface);
 
     valid &= families.is_complete;
 
@@ -420,9 +420,15 @@ bool is_device_suitable_(VkPhysicalDevice device) {
  * Returns:
  *   queue_families struct containing family indices.
  */
-queue_families find_queue_families_(VkPhysicalDevice device) {
-    queue_families indices;
-    indices.is_complete = 0;
+queue_families find_queue_families_(
+    VkPhysicalDevice device,
+    VkSurfaceKHR surface
+) {
+    queue_families indices = {
+        -1,     // graphics family index
+        -1,     // present family index
+        false   // is complete
+    };
 
     uint32_t family_count = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(device, &family_count, NULL);
@@ -436,15 +442,31 @@ queue_families find_queue_families_(VkPhysicalDevice device) {
         printf("    - Family %i has: %i queues, ", i, families[i].queueCount);
 
         if(families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-            printf("graphics bit\n");
+            printf("graphics bit, ");
 
-            if(!indices.is_complete) {
+            if(indices.graphics_family_index == -1) {
                 indices.graphics_family_index = i;
-                indices.is_complete = true;
             }
         }
         else {
-            printf("no graphics bit\n");
+            printf("no graphics bit, ");
+        }
+
+        VkBool32 present_support = VK_FALSE;
+        vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &present_support);
+
+        if(present_support == VK_TRUE) {
+            indices.present_family_index = i;
+            printf("presentation support\n");
+        }
+        else {
+            printf("no presentation support\n");
+        }
+
+        if(indices.graphics_family_index != -1 && 
+            indices.present_family_index != -1) {
+                indices.is_complete = true;
+                break;
         }
     }
 
@@ -461,22 +483,41 @@ queue_families find_queue_families_(VkPhysicalDevice device) {
  *   bool indicating success.
  */
 bool create_logical_device_(vk_app* app) {
-    queue_families indices = find_queue_families_(app->physical_device);
+    queue_families indices = find_queue_families_(app->physical_device, app->surface);
 
-    float queue_priority = 1.0f; // still necessary even tho only 1 queue
-    VkDeviceQueueCreateInfo queue_create_info = {};
-    queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    queue_create_info.queueFamilyIndex = indices.graphics_family_index;
-    queue_create_info.queueCount = 1;
-    queue_create_info.pQueuePriorities = &queue_priority;
+    float queue_priority = 1.0f; 
+    VkDeviceQueueCreateInfo graphics_info = {};
+    graphics_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    graphics_info.queueFamilyIndex = indices.graphics_family_index;
+    graphics_info.queueCount = 1;
+    graphics_info.pQueuePriorities = &queue_priority;
+
+    VkDeviceQueueCreateInfo present_info = {};
+    present_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    present_info.queueFamilyIndex = indices.present_family_index;
+    present_info.queueCount = 1;
+    present_info.pQueuePriorities = &queue_priority;
+
+    VkDeviceQueueCreateInfo queue_infos[] = {
+        graphics_info,
+        present_info
+    };
 
     // don't need anything special, leave default
     VkPhysicalDeviceFeatures device_features = {};
+    uint32_t queue_create_count = 0;
+
+    if(indices.graphics_family_index != indices.present_family_index) {
+        queue_create_count = 2;
+    }
+    else {
+        queue_create_count = 1;
+    }
 
     VkDeviceCreateInfo device_create_info = {};
     device_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    device_create_info.pQueueCreateInfos = &queue_create_info;
-    device_create_info.queueCreateInfoCount = 1;
+    device_create_info.pQueueCreateInfos = queue_infos;
+    device_create_info.queueCreateInfoCount = queue_create_count;
     device_create_info.pEnabledFeatures = &device_features;    
 
     device_create_info.enabledExtensionCount = 0;
@@ -498,6 +539,7 @@ bool create_logical_device_(vk_app* app) {
     }
 
     vkGetDeviceQueue(app->device, indices.graphics_family_index, 0, &app->graphics_queue);
+    vkGetDeviceQueue(app->device, indices.present_family_index, 0, &app->present_queue);
 
     return success == VK_SUCCESS;
 }
