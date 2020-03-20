@@ -5,9 +5,9 @@
 #include <string.h>
 
 #ifdef NDEBUG
-const int ENABLE_VALIDATION_LAYERS = 0;
+const bool ENABLE_VALIDATION_LAYERS = false;
 #else
-const int ENABLE_VALIDATION_LAYERS = 1;
+const bool ENABLE_VALIDATION_LAYERS = true;
 #endif
 
 const char* VALIDATION_LAYERS[] = {
@@ -17,21 +17,21 @@ const uint32_t VALIDATION_LAYER_COUNT = 1;
 
 // "Private" interface
 void init_window_(vk_app*);
-int init_vulkan_(vk_app*);
+bool init_vulkan_(vk_app*);
 
 char** get_required_extensions_(uint32_t* count);
-int init_instance_(vk_app*);
+bool init_instance_(vk_app*);
 
-int setup_debug_messenger_(vk_app*);
+bool setup_debug_messenger_(vk_app*);
 void cleanup_debug_messenger_(vk_app*);
 
-int create_surface_(vk_app*);
+bool create_surface_(vk_app*);
 
-int pick_physical_device_(vk_app*);
-int is_device_suitable_(VkPhysicalDevice device);
+bool pick_physical_device_(vk_app*);
+bool is_device_suitable_(VkPhysicalDevice device);
 queue_families find_queue_families_(VkPhysicalDevice device);
 
-int create_logical_device_(vk_app*);
+bool create_logical_device_(vk_app*);
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(
     VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
@@ -48,7 +48,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(
 void init_vk_app(vk_app* app) {
     init_window_(app);
 
-    int success = init_vulkan_(app);
+    bool success = init_vulkan_(app);
 
     if(success) {
         printf("Successfully initialized vulkan");
@@ -110,9 +110,12 @@ void init_window_(vk_app* app) {
  * 
  * Params:
  *   app - vulkan app
+ * 
+ * Returns:
+ *   boolean indicating success
  */
-int init_vulkan_(vk_app* app) {
-    int success = VK_SUCCESS;
+bool init_vulkan_(vk_app* app) {
+    bool success = true;
 
     success = init_instance_(app);
     
@@ -175,9 +178,9 @@ char** get_required_extensions_(uint32_t* count) {
  *   app - vulkan app
  * 
  * Returns:
- *   int indicating success.
+ *   bool indicating success.
  */
-int init_instance_(vk_app* app) {
+bool init_instance_(vk_app* app) {
     VkApplicationInfo app_info = {};
     app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     app_info.pApplicationName = "Hello Triangle";
@@ -266,9 +269,9 @@ int init_instance_(vk_app* app) {
  *   app - vulkan app
  * 
  * Returns:
- *   int indicating success
+ *   bool indicating success
  */
-int setup_debug_messenger_(vk_app* app) {
+bool setup_debug_messenger_(vk_app* app) {
     VkDebugUtilsMessengerCreateInfoEXT create_info = {};
     
     create_info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
@@ -295,7 +298,7 @@ int setup_debug_messenger_(vk_app* app) {
     else
     {
         fprintf(stderr, "Could not find debug utils func\n");
-        return 0;
+        return false;
     }
 }
 
@@ -330,9 +333,9 @@ void cleanup_debug_messenger_(vk_app* app) {
  *   app - vulkan app
  * 
  * Returns:
- *   int indicating success
+ *   bool indicating success
  */
-int create_surface_(vk_app* app) {
+bool create_surface_(vk_app* app) {
     VkResult result = glfwCreateWindowSurface(app->instance, app->app_window, NULL, &app->surface);
 
     if(result != VK_SUCCESS) {
@@ -351,7 +354,7 @@ int create_surface_(vk_app* app) {
  * Returns:
  *   int indicating success
  */
-int pick_physical_device_(vk_app* app) {
+bool pick_physical_device_(vk_app* app) {
     app->physical_device = VK_NULL_HANDLE;
 
     uint32_t device_count = 0;
@@ -386,16 +389,16 @@ int pick_physical_device_(vk_app* app) {
  *   device - physical device
  * 
  * Returns:
- *   int indicating validity
+ *   bool indicating validity
  */
-int is_device_suitable_(VkPhysicalDevice device) {
+bool is_device_suitable_(VkPhysicalDevice device) {
     VkPhysicalDeviceProperties props;
     vkGetPhysicalDeviceProperties(device, &props);
 
     VkPhysicalDeviceFeatures features;
     vkGetPhysicalDeviceFeatures(device, &features);
 
-    int valid = props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU &&
+    bool valid = props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU &&
         features.geometryShader;
 
     queue_families families = find_queue_families_(device);
@@ -437,7 +440,7 @@ queue_families find_queue_families_(VkPhysicalDevice device) {
 
             if(!indices.is_complete) {
                 indices.graphics_family_index = i;
-                indices.is_complete = 1;
+                indices.is_complete = true;
             }
         }
         else {
@@ -455,9 +458,9 @@ queue_families find_queue_families_(VkPhysicalDevice device) {
  *   app - vulkan app
  * 
  * Returns:
- *   int indicating success.
+ *   bool indicating success.
  */
-int create_logical_device_(vk_app* app) {
+bool create_logical_device_(vk_app* app) {
     queue_families indices = find_queue_families_(app->physical_device);
 
     float queue_priority = 1.0f; // still necessary even tho only 1 queue

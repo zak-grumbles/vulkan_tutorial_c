@@ -1,12 +1,14 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
+#include <stdbool.h>
+
 /**
  * Holds indices of graphics families for a single physical device.
  */
 typedef struct {
     uint32_t graphics_family_index;
-    int is_complete;
+    bool is_complete;
 } queue_families;
 
 /**
