@@ -154,9 +154,11 @@ char** get_required_extensions_(uint32_t* count) {
     if(ENABLE_VALIDATION_LAYERS) {
         size_t ext_len = strlen(VK_EXT_DEBUG_UTILS_EXTENSION_NAME) + 1;
 
-        exts[total_count] = (char*)malloc(sizeof(char) * ext_len);
-        strcpy(exts[total_count], VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+        exts[total_count - 1] = (char*)malloc(sizeof(char) * ext_len);
+        strcpy(exts[total_count - 1], VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     }
+
+    *count = total_count;
 
     return exts;
 }
