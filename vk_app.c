@@ -23,6 +23,7 @@ char** get_required_extensions_(uint32_t* count);
 int init_instance_(vk_app*);
 
 int setup_debug_messenger_(vk_app*);
+void cleanup_debug_messenger_(vk_app*);
 
 int create_surface_(vk_app*);
 
@@ -80,6 +81,9 @@ void cleanup_vk_app(vk_app* app) {
     vkDestroyDevice(app->device, NULL);
 
     vkDestroySurfaceKHR(app->instance, app->surface, NULL);
+
+    cleanup_debug_messenger_(app);
+
     vkDestroyInstance(app->instance, NULL);
     
     glfwDestroyWindow(app->app_window);
@@ -116,6 +120,7 @@ int init_vulkan_(vk_app* app) {
         setup_debug_messenger_(app);
     }
 
+    if(success) success &= create_surface_(app);
     if(success) success &= pick_physical_device_(app);
     if(success) success &= create_logical_device_(app);
 
@@ -295,6 +300,30 @@ int setup_debug_messenger_(vk_app* app) {
 }
 
 /**
+ * Cleans up the debug messenger.
+ * 
+ * Params:
+ *   app - vulkan app
+ * 
+ * Returns:
+ *   int indicating success
+ */
+void cleanup_debug_messenger_(vk_app* app) {
+    PFN_vkDestroyDebugUtilsMessengerEXT func = 
+        (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(
+            app->instance, "vkDestroyDebugUtilsMessengerEXT"
+        );
+
+    if(func != NULL) {
+        func(app->instance, app->debug_messenger, NULL);
+    }
+    else
+    {
+        fprintf(stderr, "Couldn't find func to destoy debug messenger\n");
+    }
+}
+
+/**
  * Creates the window surface.
  * 
  * Params:
@@ -303,7 +332,7 @@ int setup_debug_messenger_(vk_app* app) {
  * Returns:
  *   int indicating success
  */
-int create_surface(vk_app* app) {
+int create_surface_(vk_app* app) {
     VkResult result = glfwCreateWindowSurface(app->instance, app->app_window, NULL, &app->surface);
 
     if(result != VK_SUCCESS) {
