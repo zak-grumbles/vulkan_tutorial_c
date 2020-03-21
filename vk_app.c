@@ -1,5 +1,7 @@
 #include "vk_app.h"
 
+#include <stdint.h>
+#include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -10,10 +12,20 @@ const bool ENABLE_VALIDATION_LAYERS = false;
 const bool ENABLE_VALIDATION_LAYERS = true;
 #endif
 
+const int WIDTH = 800;
+const int HEIGHT = 600;
+
+// Validation layers
 const char* VALIDATION_LAYERS[] = {
     "VK_LAYER_KHRONOS_validation"
 };
 const uint32_t VALIDATION_LAYER_COUNT = 1;
+
+// Device extensions
+const char* DEVICE_EXTENSIONS[] = {
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME
+};
+const uint32_t DEVICE_EXTENSIONS_COUNT = 1;
 
 // "Private" interface
 void init_window_(vk_app*);
@@ -29,7 +41,14 @@ bool create_surface_(vk_app*);
 
 bool pick_physical_device_(vk_app*);
 bool is_device_suitable_(VkPhysicalDevice, VkSurfaceKHR);
+bool device_supports_exts_(VkPhysicalDevice);
 queue_families find_queue_families_(VkPhysicalDevice, VkSurfaceKHR);
+
+swapchain_details get_swapchain_support_(VkPhysicalDevice, VkSurfaceKHR);
+VkSurfaceFormatKHR choose_swap_surface_format_(VkSurfaceFormatKHR*, uint32_t);
+VkPresentModeKHR choose_present_mode_(VkPresentModeKHR*, uint32_t);
+VkExtent2D choose_swap_extent_(const VkSurfaceCapabilitiesKHR* const capabilities);
+bool create_swapchain_(vk_app*);
 
 bool create_logical_device_(vk_app*);
 
@@ -78,6 +97,9 @@ void run_vk_app(vk_app* app) {
  */
 void cleanup_vk_app(vk_app* app) {
 
+    vkDestroySwapchainKHR(app->device, app->swapchain,
+        NULL);
+
     vkDestroyDevice(app->device, NULL);
 
     vkDestroySurfaceKHR(app->instance, app->surface, NULL);
@@ -101,7 +123,7 @@ void init_window_(vk_app* app) {
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
-    app->app_window = glfwCreateWindow(800, 600, "Vulkan Window", NULL, NULL);
+    app->app_window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan Window", NULL, NULL);
 }
 
 /**
@@ -126,6 +148,7 @@ bool init_vulkan_(vk_app* app) {
     if(success) success &= create_surface_(app);
     if(success) success &= pick_physical_device_(app);
     if(success) success &= create_logical_device_(app);
+    if(success) success &= create_swapchain_(app);
 
     return success;
 }
@@ -403,11 +426,60 @@ bool is_device_suitable_(VkPhysicalDevice device, VkSurfaceKHR surface) {
 
     queue_families families = find_queue_families_(device, surface);
 
+    valid &= device_supports_exts_(device);
     valid &= families.is_complete;
+
+    if(valid) {
+        swapchain_details scd = get_swapchain_support_(device, surface);
+
+        valid &= (scd.num_formats != 0 && scd.num_present_modes != 0);
+    }
 
     printf("  - Checking device %s - %i\n", props.deviceName, valid);
 
     return valid;
+}
+
+/**
+ * Checks if the given device supports the required
+ * device extensions.
+ * 
+ * Params:
+ *   device - Physical device handle.
+ * 
+ * Returns:
+ *   boolean indicating support
+ */
+bool device_supports_exts_(VkPhysicalDevice device) {
+    uint32_t ext_count = 0;
+    vkEnumerateDeviceExtensionProperties(device, NULL, &ext_count, NULL);
+
+    VkExtensionProperties* props = (VkExtensionProperties*)malloc(
+        sizeof(VkExtensionProperties) * ext_count
+    );
+
+    vkEnumerateDeviceExtensionProperties(device, NULL, &ext_count, props);
+
+    bool all_found = true;
+
+    // This is gross, but will work for now since it's known that 
+    // we only require 1 device extension.
+    for(uint32_t i = 0; i < DEVICE_EXTENSIONS_COUNT; i++) {
+        bool ext_found = false;
+        for(uint32_t j = 0; j < ext_count; j++) {
+            if(strcmp(DEVICE_EXTENSIONS[i], props[j].extensionName) == 0) {
+                ext_found = true;
+                break;
+            }
+        }
+
+        all_found &= ext_found;
+    }
+
+    free(props);
+    props = NULL;
+
+    return all_found;
 }
 
 /**
@@ -474,6 +546,128 @@ queue_families find_queue_families_(
 }
 
 /**
+ * Gets the details of swapchain support for the given
+ * physical device.
+ * 
+ * Params:
+ *   device  - physical device
+ *   surface - Render surface
+ * 
+ * Returns
+ *   swapchain_details struct
+ */
+swapchain_details get_swapchain_support_(VkPhysicalDevice device, VkSurfaceKHR surface) {
+    swapchain_details scd = {};
+
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface,
+        &scd.capabilities);
+
+    vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &scd.num_formats,
+        NULL);
+
+    if(scd.num_formats != 0) {
+        scd.formats = (VkSurfaceFormatKHR*)malloc(
+            sizeof(VkSurfaceFormatKHR) * scd.num_formats);
+        vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface,
+            &scd.num_formats, scd.formats);
+    }
+
+    vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface,
+        &scd.num_present_modes, NULL);
+    if(scd.num_present_modes != 0) {
+        scd.present_modes = (VkPresentModeKHR*)malloc(
+            sizeof(VkPresentModeKHR) * scd.num_present_modes);
+        vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface,
+            &scd.num_present_modes, scd.present_modes);
+    }
+
+    return scd;
+}
+
+/**
+ * Searches through the given swap surface formats and tries
+ * to find one that matches our prefered format.
+ * 
+ * Params:
+ *   formats     - Available formats
+ *   num_formats - number of available formats
+ * 
+ * Returns:
+ *   Chosen VkSurfaceFormatKHR
+ */
+VkSurfaceFormatKHR choose_swap_surface_format_(
+    VkSurfaceFormatKHR* formats,
+     uint32_t num_formats
+) {
+    // prefered is nonlinear SRGB color space & B8G8R8A8 format
+    for(uint32_t i = 0; i < num_formats; i++) {
+        if(formats[i].format == VK_FORMAT_B8G8R8A8_SRGB && 
+           formats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR){
+
+            printf("Found ideal swap surface format\n");
+            return formats[i];
+        }
+    }
+
+    // If we don't find ideal, just take the first one.
+    printf("Didn't find ideal swap surface format. Defaulting to first\n");
+    return formats[0];
+}
+
+/**
+ * Searches through the available present modes to find
+ * an ideal one.
+ * 
+ * Params:
+ *   present_modes - array of available present modes
+ *   num_present_modes - number of modes
+ * 
+ * Returns:
+ *   Chosen VkPresentModeKHR
+ */
+VkPresentModeKHR choose_present_mode_(
+    VkPresentModeKHR* present_modes,
+    uint32_t num_present_modes
+) {
+    for(uint32_t i = 0; i < num_present_modes; i++) {
+        if(present_modes[i] == VK_PRESENT_MODE_MAILBOX_KHR) {
+            printf("Found desired mailbox present mode\n");
+            return present_modes[i];
+        }
+    }
+
+    printf("Desired present mode not found. Defaulting to FIFO\n");
+    return VK_PRESENT_MODE_FIFO_KHR;
+}
+
+/**
+ * Selects the idea swap extent.
+ * 
+ * Params:
+ *   capabilities - surface capabilities
+ * 
+ * Retruns:
+ *   Chosen VkExtent2D
+ */
+VkExtent2D choose_swap_extent_(const VkSurfaceCapabilitiesKHR* const capabilities) {
+
+    // If extent width is set to max, we can do what we want.
+    if(capabilities->currentExtent.width != UINT32_MAX) {
+        return capabilities->currentExtent;
+    }
+    else {
+        VkExtent2D actual_extent = { WIDTH, HEIGHT };
+
+        actual_extent.width = fmax(capabilities->minImageExtent.width,
+            fmin(capabilities->maxImageExtent.width, actual_extent.width));
+        actual_extent.height = fmax(capabilities->minImageExtent.height,
+            fmin(capabilities->maxImageExtent.height, actual_extent.height));
+
+        return actual_extent;
+    }
+}
+
+/**
  * Creates the logical vulkan device for use in the app.
  * 
  * Params:
@@ -520,7 +714,8 @@ bool create_logical_device_(vk_app* app) {
     device_create_info.queueCreateInfoCount = queue_create_count;
     device_create_info.pEnabledFeatures = &device_features;    
 
-    device_create_info.enabledExtensionCount = 0;
+    device_create_info.enabledExtensionCount = DEVICE_EXTENSIONS_COUNT;
+    device_create_info.ppEnabledExtensionNames = DEVICE_EXTENSIONS;
 
     // These are deprecated, but set for outdated implementations
     if(ENABLE_VALIDATION_LAYERS) {
@@ -545,6 +740,74 @@ bool create_logical_device_(vk_app* app) {
 }
 
 /**
+ * Constructs the swapchain that will be used by the app.
+ * 
+ * Params:
+ *   app - vulkan app
+ * 
+ * Returns:
+ *   bool indicating success.
+ */
+bool create_swapchain_(vk_app* app) {
+    swapchain_details scd = get_swapchain_support_(app->physical_device, app->surface);
+
+    VkSurfaceFormatKHR surface_format = choose_swap_surface_format_(
+        scd.formats, scd.num_formats);
+    VkPresentModeKHR present_mode = choose_present_mode_(
+        scd.present_modes, scd.num_present_modes);
+    VkExtent2D extent = choose_swap_extent_(&scd.capabilities);
+
+    uint32_t img_count = scd.capabilities.minImageCount + 1;
+    if(scd.capabilities.maxImageCount > 0 && img_count > scd.capabilities.maxImageCount) {
+        img_count = scd.capabilities.maxImageCount;
+        printf("Exceeded max image count. Using %i\n", img_count);
+    }
+    else {
+        printf("No max image count found. Using %i\n", img_count);
+    }
+
+    VkSwapchainCreateInfoKHR create_info = {};
+    create_info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+    create_info.surface = app->surface;
+    create_info.minImageCount = img_count;
+    create_info.imageFormat = surface_format.format;
+    create_info.imageColorSpace = surface_format.colorSpace;
+    create_info.imageExtent = extent;
+    create_info.imageArrayLayers = 1;
+    create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+    queue_families indices = find_queue_families_(app->physical_device,
+        app->surface);
+    uint32_t queue_fam_indices[] = {
+        indices.graphics_family_index,
+        indices.present_family_index
+    };
+
+    // If using 2 different families, need to make sharing concurrent
+    if(indices.graphics_family_index != indices.present_family_index) {
+        create_info.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+        create_info.queueFamilyIndexCount = 2;
+        create_info.pQueueFamilyIndices = queue_fam_indices;
+    }
+    else {
+        create_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        create_info.queueFamilyIndexCount = 0;
+        create_info.pQueueFamilyIndices = NULL;
+    }
+
+    create_info.preTransform = scd.capabilities.currentTransform;
+    create_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    create_info.presentMode = present_mode;
+    create_info.clipped = VK_TRUE;
+    create_info.oldSwapchain = VK_NULL_HANDLE;
+
+    VkResult result = vkCreateSwapchainKHR(app->device,
+        &create_info, NULL, &app->swapchain);
+
+    return result == VK_SUCCESS;
+}
+
+/**
  * Debug utils messenger callback method.
  */
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(
@@ -555,4 +818,13 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(
 ) {
     fprintf(stderr, "Validation layer: %s", pCallbackData->pMessage);
     return VK_FALSE;
+}
+
+//
+//  Swapchain Support Interface
+//
+
+void cleanup_swapchain_details(swapchain_details* scd) {
+    free(scd->formats);
+    free(scd->present_modes);
 }

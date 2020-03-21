@@ -13,6 +13,21 @@ typedef struct {
 } queue_families;
 
 /**
+ * Holds data about swapchain support.
+ */
+typedef struct {
+    VkSurfaceCapabilitiesKHR capabilities;
+
+    VkSurfaceFormatKHR* formats;
+    uint32_t num_formats;
+
+    VkPresentModeKHR* present_modes;
+    uint32_t num_present_modes;
+} swapchain_details;
+
+void cleanup_swapchain_details(swapchain_details*);
+
+/**
  * Represents a vulkan application. Holds all relevant structs and
  * data.
  */
@@ -25,6 +40,7 @@ typedef struct {
     VkDevice device;
     VkQueue graphics_queue;
     VkQueue present_queue;
+    VkSwapchainKHR swapchain;
 } vk_app;
 
 // "Public" interface
