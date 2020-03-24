@@ -40,10 +40,13 @@ typedef struct {
     VkDevice device;
     VkQueue graphics_queue;
     VkQueue present_queue;
-    VkSwapchainKHR swapchain;
 
+    VkSurfaceFormatKHR swapchain_format;
+    VkSwapchainKHR swapchain;
     VkImage* swapchain_images;
     uint32_t swapchain_image_count;
+
+    VkImageView* swapchain_image_views;
 } vk_app;
 
 // "Public" interface

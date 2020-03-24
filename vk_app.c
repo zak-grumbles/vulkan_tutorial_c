@@ -49,6 +49,7 @@ VkSurfaceFormatKHR choose_swap_surface_format_(VkSurfaceFormatKHR*, uint32_t);
 VkPresentModeKHR choose_present_mode_(VkPresentModeKHR*, uint32_t);
 VkExtent2D choose_swap_extent_(const VkSurfaceCapabilitiesKHR* const capabilities);
 bool create_swapchain_(vk_app*);
+bool create_image_views_(vk_app*);
 
 bool create_logical_device_(vk_app*);
 
@@ -96,7 +97,11 @@ void run_vk_app(vk_app* app) {
  *   app - vulkan app
  */
 void cleanup_vk_app(vk_app* app) {
-
+    for(uint32_t i = 0; i < app->swapchain_image_count; i++) {
+        vkDestroyImageView(app->device, app->swapchain_image_views[i], NULL);
+    }
+    free(app->swapchain_image_views);
+    app->swapchain_image_views = NULL;
 
     vkDestroySwapchainKHR(app->device, app->swapchain,
         NULL);
@@ -154,6 +159,7 @@ bool init_vulkan_(vk_app* app) {
     if(success) success &= pick_physical_device_(app);
     if(success) success &= create_logical_device_(app);
     if(success) success &= create_swapchain_(app);
+    if(success) success &= create_image_views_(app);
 
     return success;
 }
@@ -756,7 +762,7 @@ bool create_logical_device_(vk_app* app) {
 bool create_swapchain_(vk_app* app) {
     swapchain_details scd = get_swapchain_support_(app->physical_device, app->surface);
 
-    VkSurfaceFormatKHR surface_format = choose_swap_surface_format_(
+    app->swapchain_format = choose_swap_surface_format_(
         scd.formats, scd.num_formats);
     VkPresentModeKHR present_mode = choose_present_mode_(
         scd.present_modes, scd.num_present_modes);
@@ -775,8 +781,8 @@ bool create_swapchain_(vk_app* app) {
     create_info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
     create_info.surface = app->surface;
     create_info.minImageCount = img_count;
-    create_info.imageFormat = surface_format.format;
-    create_info.imageColorSpace = surface_format.colorSpace;
+    create_info.imageFormat = app->swapchain_format.format;
+    create_info.imageColorSpace = app->swapchain_format.colorSpace;
     create_info.imageExtent = extent;
     create_info.imageArrayLayers = 1;
     create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
@@ -829,6 +835,62 @@ bool create_swapchain_(vk_app* app) {
     }
 
     return result == VK_SUCCESS;
+}
+
+/**
+ * Creates image views to be used in the render pipeline.
+ * 
+ * Params:
+ *   app - Vulkan app
+ * 
+ * Returns:
+ *   boolean indicating success
+ */
+bool create_image_views_(vk_app* app) {
+
+    app->swapchain_image_views = (VkImageView*)malloc(
+        sizeof(VkImageView) * app->swapchain_image_count
+    );
+
+    bool success = true;
+    for(uint32_t i = 0; i < app->swapchain_image_count; i++) {
+        VkImageViewCreateInfo create_info = {};
+
+        create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        create_info.image = app->swapchain_images[i];
+        create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        create_info.format = app->swapchain_format.format;
+
+        // default color mapping
+        create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+        create_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+        create_info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+        create_info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+
+        create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        create_info.subresourceRange.baseMipLevel = 0;
+        create_info.subresourceRange.levelCount = 1;
+        create_info.subresourceRange.baseArrayLayer = 0;
+        create_info.subresourceRange.layerCount = 1;
+
+        VkResult result = vkCreateImageView(
+            app->device,
+            &create_info,
+            NULL,
+            &app->swapchain_image_views[i]
+        );
+
+        success &= (result == VK_SUCCESS);
+    }
+
+    if(success) {
+        printf("Succesfully created image views\n");
+    }
+    else {
+        fprintf(stderr, "Failed to create one or more image views\n");
+    }
+
+    return success;
 }
 
 /**
