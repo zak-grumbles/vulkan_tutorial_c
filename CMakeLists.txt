@@ -12,8 +12,6 @@ if(WIN32)
     set(GLFW_LIBS "${LRN_VK_LIB_DIR}/glfw-3.3.2/lib-mingw-w64/libglfw3.a")
 endif()
 
-# linmath (header only)
-set(LINMATH_INCLUDES "${LRN_VK_LIB_DIR}/linmath")
 
 # Source files
 set(LRN_VK_SRC 
@@ -31,8 +29,6 @@ target_link_libraries(learnvk PUBLIC ${GLFW_LIBS})
 
 target_include_directories(learnvk PUBLIC ${Vulkan_INCLUDE_DIRS})
 target_link_libraries(learnvk PUBLIC ${Vulkan_LIBRARIES})
-
-target_include_directories(learnvk PUBLIC ${LINMATH_INCLUDES})
 
 # Compiler options
 target_compile_options(learnvk PRIVATE -g -Wall -Werror)
