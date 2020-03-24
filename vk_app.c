@@ -97,8 +97,13 @@ void run_vk_app(vk_app* app) {
  */
 void cleanup_vk_app(vk_app* app) {
 
+
     vkDestroySwapchainKHR(app->device, app->swapchain,
         NULL);
+
+    // Images are destroyed by swapchain destruction
+    free(app->swapchain_images);
+    app->swapchain_images = NULL;
 
     vkDestroyDevice(app->device, NULL);
 
@@ -803,6 +808,25 @@ bool create_swapchain_(vk_app* app) {
 
     VkResult result = vkCreateSwapchainKHR(app->device,
         &create_info, NULL, &app->swapchain);
+
+    if(result == VK_SUCCESS) {
+        result = vkGetSwapchainImagesKHR(app->device, app->swapchain,
+            &app->swapchain_image_count, NULL);
+
+        printf("Swapchain has %i images\n", app->swapchain_image_count);
+        if(app->swapchain_image_count > 0) {
+            app->swapchain_images = malloc(
+                sizeof(VkImage) * app->swapchain_image_count
+            );
+
+            result = vkGetSwapchainImagesKHR(
+                app->device,
+                app->swapchain,
+                &app->swapchain_image_count,
+                app->swapchain_images
+            );
+        }
+    }
 
     return result == VK_SUCCESS;
 }

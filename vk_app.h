@@ -41,6 +41,9 @@ typedef struct {
     VkQueue graphics_queue;
     VkQueue present_queue;
     VkSwapchainKHR swapchain;
+
+    VkImage* swapchain_images;
+    uint32_t swapchain_image_count;
 } vk_app;
 
 // "Public" interface
