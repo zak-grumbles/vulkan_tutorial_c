@@ -24,6 +24,8 @@ set(LRN_VK_SRC
     main.c
     vk_app.h
     vk_app.c
+    utils.h
+    utils.c
 )
 
 # Executable

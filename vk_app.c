@@ -1,4 +1,5 @@
 #include "vk_app.h"
+#include "utils.h"
 
 #include <stdint.h>
 #include <math.h>
@@ -44,6 +45,11 @@ bool is_device_suitable_(VkPhysicalDevice, VkSurfaceKHR);
 bool device_supports_exts_(VkPhysicalDevice);
 queue_families find_queue_families_(VkPhysicalDevice, VkSurfaceKHR);
 
+bool create_logical_device_(vk_app*);
+
+bool create_graphics_pipeline_(vk_app*);
+VkShaderModule create_shader_module(vk_app*, const uint32_t*, size_t);
+
 swapchain_details get_swapchain_support_(VkPhysicalDevice, VkSurfaceKHR);
 VkSurfaceFormatKHR choose_swap_surface_format_(VkSurfaceFormatKHR*, uint32_t);
 VkPresentModeKHR choose_present_mode_(VkPresentModeKHR*, uint32_t);
@@ -51,7 +57,6 @@ VkExtent2D choose_swap_extent_(const VkSurfaceCapabilitiesKHR* const capabilitie
 bool create_swapchain_(vk_app*);
 bool create_image_views_(vk_app*);
 
-bool create_logical_device_(vk_app*);
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(
     VkDebugUtilsMessageSeverityFlagBitsEXT,
@@ -160,6 +165,8 @@ bool init_vulkan_(vk_app* app) {
     if(success) success &= create_logical_device_(app);
     if(success) success &= create_swapchain_(app);
     if(success) success &= create_image_views_(app);
+
+    if(success) success &= create_graphics_pipeline_(app);
 
     return success;
 }
@@ -891,6 +898,45 @@ bool create_image_views_(vk_app* app) {
     }
 
     return success;
+}
+
+bool create_graphics_pipeline_(vk_app* app) {
+
+    size_t vert_size;
+    uint32_t* vert_code = read_file("vert.spv", &vert_size);
+
+    size_t frag_size;
+    uint32_t* frag_code = read_file("frag.spv", &frag_size);
+
+    VkShaderModule vertModule = create_shader_module(app, vert_code, vert_size);
+    VkShaderModule fragModule = create_shader_module(app, frag_code, frag_size);
+
+    vkDestroyShaderModule(app->device, fragModule, NULL);
+    free(frag_code);
+    frag_code = NULL;
+
+    vkDestroyShaderModule(app->device, vertModule, NULL);
+    free(vert_code);
+    vert_code = NULL;
+
+    return true;
+}
+
+VkShaderModule create_shader_module(vk_app* app, const uint32_t* code, size_t code_len) {
+    VkShaderModuleCreateInfo info = {};
+    info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    info.codeSize = code_len;
+    info.pCode = code;
+
+    VkShaderModule module;
+    VkResult result = vkCreateShaderModule(app->device, 
+        &info, NULL, &module);
+
+    if(result != VK_SUCCESS) {
+        fprintf(stderr, "Could not create shader module");
+    }
+
+    return module;
 }
 
 /**
