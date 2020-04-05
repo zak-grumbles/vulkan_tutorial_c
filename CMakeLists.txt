@@ -41,4 +41,4 @@ target_link_libraries(learnvk PUBLIC ${Vulkan_LIBRARIES})
 target_link_libraries(learnvk PUBLIC ${LRN_VK_PLATFORM_LIBS})
 
 # Compiler options
-target_compile_options(learnvk PRIVATE -g -Wall -Werror)
+target_compile_options(learnvk PRIVATE -g -Wall)

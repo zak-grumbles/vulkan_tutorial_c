@@ -42,11 +42,14 @@ typedef struct {
     VkQueue present_queue;
 
     VkSurfaceFormatKHR swapchain_format;
+    VkExtent2D swapchain_extent;
     VkSwapchainKHR swapchain;
     VkImage* swapchain_images;
     uint32_t swapchain_image_count;
 
     VkImageView* swapchain_image_views;
+
+    VkPipelineLayout pipeline_layout;
 } vk_app;
 
 // "Public" interface

@@ -102,6 +102,9 @@ void run_vk_app(vk_app* app) {
  *   app - vulkan app
  */
 void cleanup_vk_app(vk_app* app) {
+
+    vkDestroyPipelineLayout(app->device, app->pipeline_layout, NULL);
+
     for(uint32_t i = 0; i < app->swapchain_image_count; i++) {
         vkDestroyImageView(app->device, app->swapchain_image_views[i], NULL);
     }
@@ -773,7 +776,7 @@ bool create_swapchain_(vk_app* app) {
         scd.formats, scd.num_formats);
     VkPresentModeKHR present_mode = choose_present_mode_(
         scd.present_modes, scd.num_present_modes);
-    VkExtent2D extent = choose_swap_extent_(&scd.capabilities);
+    app->swapchain_extent = choose_swap_extent_(&scd.capabilities);
 
     uint32_t img_count = scd.capabilities.minImageCount + 1;
     if(scd.capabilities.maxImageCount > 0 && img_count > scd.capabilities.maxImageCount) {
@@ -790,7 +793,7 @@ bool create_swapchain_(vk_app* app) {
     create_info.minImageCount = img_count;
     create_info.imageFormat = app->swapchain_format.format;
     create_info.imageColorSpace = app->swapchain_format.colorSpace;
-    create_info.imageExtent = extent;
+    create_info.imageExtent = app->swapchain_extent;
     create_info.imageArrayLayers = 1;
     create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
@@ -908,18 +911,141 @@ bool create_graphics_pipeline_(vk_app* app) {
     size_t frag_size;
     uint32_t* frag_code = read_file("frag.spv", &frag_size);
 
-    VkShaderModule vertModule = create_shader_module(app, vert_code, vert_size);
-    VkShaderModule fragModule = create_shader_module(app, frag_code, frag_size);
 
-    vkDestroyShaderModule(app->device, fragModule, NULL);
+    // Shaders
+    VkShaderModule vert_module = create_shader_module(app, vert_code, vert_size);
+    VkShaderModule frag_module = create_shader_module(app, frag_code, frag_size);
+
+    VkPipelineShaderStageCreateInfo vert_stage_info = {};
+    vert_stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    vert_stage_info.stage = VK_SHADER_STAGE_VERTEX_BIT;
+    vert_stage_info.module = vert_module;
+    vert_stage_info.pName = "main";
+
+    VkPipelineShaderStageCreateInfo frag_stage_info = {};
+    frag_stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    frag_stage_info.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    frag_stage_info.module = frag_module;
+    frag_stage_info.pName = "main";
+
+    VkPipelineShaderStageCreateInfo shader_stages[] = {
+        vert_stage_info,
+        frag_stage_info
+    };
+
+    // Vertex Info
+    VkPipelineVertexInputStateCreateInfo vert_input_info = {};
+    vert_input_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vert_input_info.vertexBindingDescriptionCount = 0;
+    vert_input_info.pVertexBindingDescriptions = NULL;
+    vert_input_info.vertexAttributeDescriptionCount = 0;
+    vert_input_info.pVertexAttributeDescriptions = NULL;
+
+    // Topology info
+    VkPipelineInputAssemblyStateCreateInfo input_assembly_info = {};
+    input_assembly_info.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    input_assembly_info.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    input_assembly_info.primitiveRestartEnable = VK_FALSE;
+
+    // Viewport & scissor
+    VkViewport viewport = {};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = (float)app->swapchain_extent.width;
+    viewport.height = (float)app->swapchain_extent.height;
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+
+    VkRect2D scissor = {};
+    scissor.offset.x = 0;
+    scissor.offset.y = 0;
+    scissor.extent = app->swapchain_extent;
+
+    VkPipelineViewportStateCreateInfo vp_info = {};
+    vp_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    vp_info.viewportCount = 1;
+    vp_info.pViewports = &viewport;
+    vp_info.scissorCount = 1;
+    vp_info.pScissors = &scissor;
+
+    // Rasterizer
+    VkPipelineRasterizationStateCreateInfo rast_info = {};
+    rast_info.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    rast_info.depthClampEnable = VK_FALSE;
+    rast_info.rasterizerDiscardEnable = VK_FALSE;
+    rast_info.polygonMode = VK_POLYGON_MODE_FILL;
+    rast_info.lineWidth = 1.0f;
+    rast_info.cullMode = VK_CULL_MODE_BACK_BIT;
+    rast_info.frontFace = VK_FRONT_FACE_CLOCKWISE;    
+    rast_info.depthBiasEnable = VK_FALSE;
+    rast_info.depthBiasConstantFactor = 0.0f;
+    rast_info.depthBiasClamp = 0.0f;
+    rast_info.depthBiasSlopeFactor = 0.0f;    
+
+    // Multisampling
+    VkPipelineMultisampleStateCreateInfo multi_info = {};
+    multi_info.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    multi_info.sampleShadingEnable = VK_FALSE;
+    multi_info.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    multi_info.minSampleShading = 1.0f;
+    multi_info.pSampleMask = NULL;
+    multi_info.alphaToCoverageEnable = VK_FALSE;
+    multi_info.alphaToOneEnable = VK_FALSE;
+
+    // Color blending
+    VkPipelineColorBlendAttachmentState blend_attachment = {};
+    blend_attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | 
+        VK_COLOR_COMPONENT_G_BIT | 
+        VK_COLOR_COMPONENT_B_BIT |
+        VK_COLOR_COMPONENT_A_BIT;
+    blend_attachment.blendEnable = VK_FALSE;
+    blend_attachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+    blend_attachment.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+    blend_attachment.colorBlendOp = VK_BLEND_OP_ADD;
+    blend_attachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+    blend_attachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+    blend_attachment.alphaBlendOp = VK_BLEND_OP_ADD;
+
+    VkPipelineColorBlendStateCreateInfo blend_info = {};
+    blend_info.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    blend_info.logicOpEnable = VK_FALSE;
+    blend_info.logicOp = VK_LOGIC_OP_COPY;
+    blend_info.attachmentCount = 1;
+    blend_info.pAttachments = &blend_attachment;
+    blend_info.blendConstants[0] = 0.0f;
+    blend_info.blendConstants[1] = 0.0f;
+    blend_info.blendConstants[2] = 0.0f;
+    blend_info.blendConstants[3] = 0.0f;
+
+    // Pipeline Layout
+    VkPipelineLayoutCreateInfo pipeline_layout = {};
+    pipeline_layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipeline_layout.setLayoutCount = 0;
+    pipeline_layout.pSetLayouts = NULL;
+    pipeline_layout.pushConstantRangeCount = 0;
+    pipeline_layout.pPushConstantRanges = NULL;
+
+    VkResult result = vkCreatePipelineLayout(app->device,
+        &pipeline_layout,
+        NULL,
+        &app->pipeline_layout);
+
+    if(result == VK_SUCCESS) {
+        printf("Successfully created pipeline layout\n");
+    }
+    else {
+        fprintf(stderr, "Failed to create pipeline layout\n");
+    }
+
+    vkDestroyShaderModule(app->device, frag_module, NULL);
     free(frag_code);
     frag_code = NULL;
 
-    vkDestroyShaderModule(app->device, vertModule, NULL);
+    vkDestroyShaderModule(app->device, vert_module, NULL);
     free(vert_code);
     vert_code = NULL;
 
-    return true;
+    return result == VK_SUCCESS;
 }
 
 VkShaderModule create_shader_module(vk_app* app, const uint32_t* code, size_t code_len) {
