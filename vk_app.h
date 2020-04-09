@@ -53,7 +53,7 @@ typedef struct {
 } vk_app;
 
 // "Public" interface
-void init_vk_app(vk_app*);
+bool init_vk_app(vk_app*);
 void cleanup_vk_app(vk_app*);
 
 void run_vk_app(vk_app*);

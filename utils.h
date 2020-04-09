@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <stddef.h>
 
 /**
  * Utility function for reading contents of file.

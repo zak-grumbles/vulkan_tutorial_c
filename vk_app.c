@@ -70,7 +70,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(
  * Params:
  *   app - vulkan app struct
  */
-void init_vk_app(vk_app* app) {
+bool init_vk_app(vk_app* app) {
     init_window_(app);
 
     bool success = init_vulkan_(app);
@@ -79,8 +79,10 @@ void init_vk_app(vk_app* app) {
         printf("Successfully initialized vulkan");
     }
     else {
-        printf("Failed to initialize vulkan");
+        fprintf(stderr, "Failed to initialize vulkan\n");
     }
+
+    return success;
 }
 
 /**
@@ -168,7 +170,6 @@ bool init_vulkan_(vk_app* app) {
     if(success) success &= create_logical_device_(app);
     if(success) success &= create_swapchain_(app);
     if(success) success &= create_image_views_(app);
-
     if(success) success &= create_graphics_pipeline_(app);
 
     return success;
@@ -413,9 +414,11 @@ bool pick_physical_device_(vk_app* app) {
     vkEnumeratePhysicalDevices(app->instance, &device_count, devices);
 
     printf("Found %i potential physical devices:\n", device_count);
+    bool found_valid_device = false;
     for(uint32_t i = 0; i < device_count; i++) {
         if(is_device_suitable_(devices[i], app->surface)) {
             app->physical_device = devices[i];
+	    found_valid_device = true;
             break;
         }
     }
@@ -423,7 +426,7 @@ bool pick_physical_device_(vk_app* app) {
     free(devices);
     devices = NULL;
 
-    return 1;
+    return found_valid_device;
 }
 
 /**
@@ -442,8 +445,8 @@ bool is_device_suitable_(VkPhysicalDevice device, VkSurfaceKHR surface) {
     VkPhysicalDeviceFeatures features;
     vkGetPhysicalDeviceFeatures(device, &features);
 
-    bool valid = props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU &&
-        features.geometryShader;
+    bool valid = props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ||
+	    VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU;
 
     queue_families families = find_queue_families_(device, surface);
 
@@ -908,9 +911,17 @@ bool create_graphics_pipeline_(vk_app* app) {
     size_t vert_size;
     uint32_t* vert_code = read_file("vert.spv", &vert_size);
 
+    if(vert_code == NULL) {
+		fprintf(stderr, "Failed to read shader code from \"vert.spv\"\n");
+		return false;
+	}
+
     size_t frag_size;
     uint32_t* frag_code = read_file("frag.spv", &frag_size);
-
+    if(frag_code == NULL) {
+		fprintf(stderr, "Failed to read shader code from \"frag.spv\"\n");
+		return false;
+	}
 
     // Shaders
     VkShaderModule vert_module = create_shader_module(app, vert_code, vert_size);

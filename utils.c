@@ -6,22 +6,28 @@ uint32_t* read_file(const char* filename, size_t* length) {
 
     FILE* f = fopen(filename, "rb");
 
-    fseek(f, 0L, SEEK_END);
+    char* contents = NULL;
+    if(f != NULL) {
+        fseek(f, 0L, SEEK_END);
 
-    long file_size = ftell(f);
+        long file_size = ftell(f);
 
-    fseek(f, 0L, SEEK_SET);
+        fseek(f, 0L, SEEK_SET);
 
-    char* contents = (char*)malloc(file_size * sizeof(char));
+        contents = (char*)malloc(file_size * sizeof(char));
 
-    size_t read = fread(contents, sizeof(char), file_size, f);
-    *length = read;
+        size_t read = fread(contents, sizeof(char), file_size, f);
+        *length = read;
 
-    if(read != file_size) {
-        fprintf(stderr, "Unable to read file %s\n", filename);
+        if(read != file_size) {
+            fprintf(stderr, "Unable to read file %s\n", filename);
+        }
+
+        fclose(f);
     }
-
-    fclose(f);
+    else {
+        fprintf(stderr, "Unable to open file: \"%s\"\n", filename);
+    }
 
     return (uint32_t*)contents;
 }
