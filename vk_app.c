@@ -47,6 +47,7 @@ queue_families find_queue_families_(VkPhysicalDevice, VkSurfaceKHR);
 
 bool create_logical_device_(vk_app*);
 
+bool create_render_pass_(vk_app*);
 bool create_graphics_pipeline_(vk_app*);
 VkShaderModule create_shader_module(vk_app*, const uint32_t*, size_t);
 
@@ -59,11 +60,11 @@ bool create_image_views_(vk_app*);
 
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(
-    VkDebugUtilsMessageSeverityFlagBitsEXT,
-    VkDebugUtilsMessageTypeFlagsEXT,
-    const VkDebugUtilsMessengerCallbackDataEXT*,
-    void*
-);
+        VkDebugUtilsMessageSeverityFlagBitsEXT,
+        VkDebugUtilsMessageTypeFlagsEXT,
+        const VkDebugUtilsMessengerCallbackDataEXT*,
+        void*
+        );
 
 /**
  * Initializes the vulkan app struct.
@@ -107,6 +108,8 @@ void cleanup_vk_app(vk_app* app) {
 
     vkDestroyPipelineLayout(app->device, app->pipeline_layout, NULL);
 
+    vkDestroyRenderPass(app->device, app->render_pass, NULL);
+
     for(uint32_t i = 0; i < app->swapchain_image_count; i++) {
         vkDestroyImageView(app->device, app->swapchain_image_views[i], NULL);
     }
@@ -114,7 +117,7 @@ void cleanup_vk_app(vk_app* app) {
     app->swapchain_image_views = NULL;
 
     vkDestroySwapchainKHR(app->device, app->swapchain,
-        NULL);
+            NULL);
 
     // Images are destroyed by swapchain destruction
     free(app->swapchain_images);
@@ -127,7 +130,7 @@ void cleanup_vk_app(vk_app* app) {
     cleanup_debug_messenger_(app);
 
     vkDestroyInstance(app->instance, NULL);
-    
+
     glfwDestroyWindow(app->app_window);
     app->app_window = NULL;
     glfwTerminate();
@@ -160,7 +163,7 @@ bool init_vulkan_(vk_app* app) {
     bool success = true;
 
     success = init_instance_(app);
-    
+
     if(success && ENABLE_VALIDATION_LAYERS) {
         setup_debug_messenger_(app);
     }
@@ -170,6 +173,7 @@ bool init_vulkan_(vk_app* app) {
     if(success) success &= create_logical_device_(app);
     if(success) success &= create_swapchain_(app);
     if(success) success &= create_image_views_(app);
+    if(success) success &= create_render_pass_(app);
     if(success) success &= create_graphics_pipeline_(app);
 
     return success;
@@ -267,7 +271,7 @@ bool init_instance_(vk_app* app) {
 
         if(layers_found != VALIDATION_LAYER_COUNT) {
             fprintf(stderr, "Requested %i validation layers, but only %i were found to be supported\n",
-                VALIDATION_LAYER_COUNT, layers_found);
+                    VALIDATION_LAYER_COUNT, layers_found);
         }
         else
         {
@@ -318,7 +322,7 @@ bool init_instance_(vk_app* app) {
  */
 bool setup_debug_messenger_(vk_app* app) {
     VkDebugUtilsMessengerCreateInfoEXT create_info = {};
-    
+
     create_info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
     create_info.messageSeverity = 
         VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | 
@@ -332,8 +336,8 @@ bool setup_debug_messenger_(vk_app* app) {
 
     PFN_vkCreateDebugUtilsMessengerEXT func = 
         (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(
-            app->instance, "vkCreateDebugUtilsMessengerEXT"
-        );
+                app->instance, "vkCreateDebugUtilsMessengerEXT"
+                );
 
     if(func != NULL) {
         VkResult result = func(app->instance, &create_info, NULL, &app->debug_messenger);
@@ -359,8 +363,8 @@ bool setup_debug_messenger_(vk_app* app) {
 void cleanup_debug_messenger_(vk_app* app) {
     PFN_vkDestroyDebugUtilsMessengerEXT func = 
         (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(
-            app->instance, "vkDestroyDebugUtilsMessengerEXT"
-        );
+                app->instance, "vkDestroyDebugUtilsMessengerEXT"
+                );
 
     if(func != NULL) {
         func(app->instance, app->debug_messenger, NULL);
@@ -418,7 +422,7 @@ bool pick_physical_device_(vk_app* app) {
     for(uint32_t i = 0; i < device_count; i++) {
         if(is_device_suitable_(devices[i], app->surface)) {
             app->physical_device = devices[i];
-	    found_valid_device = true;
+            found_valid_device = true;
             break;
         }
     }
@@ -446,7 +450,7 @@ bool is_device_suitable_(VkPhysicalDevice device, VkSurfaceKHR surface) {
     vkGetPhysicalDeviceFeatures(device, &features);
 
     bool valid = props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ||
-	    VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU;
+        VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU;
 
     queue_families families = find_queue_families_(device, surface);
 
@@ -479,8 +483,8 @@ bool device_supports_exts_(VkPhysicalDevice device) {
     vkEnumerateDeviceExtensionProperties(device, NULL, &ext_count, NULL);
 
     VkExtensionProperties* props = (VkExtensionProperties*)malloc(
-        sizeof(VkExtensionProperties) * ext_count
-    );
+            sizeof(VkExtensionProperties) * ext_count
+            );
 
     vkEnumerateDeviceExtensionProperties(device, NULL, &ext_count, props);
 
@@ -517,9 +521,9 @@ bool device_supports_exts_(VkPhysicalDevice device) {
  *   queue_families struct containing family indices.
  */
 queue_families find_queue_families_(
-    VkPhysicalDevice device,
-    VkSurfaceKHR surface
-) {
+        VkPhysicalDevice device,
+        VkSurfaceKHR surface
+        ) {
     queue_families indices = {
         -1,     // graphics family index
         -1,     // present family index
@@ -530,7 +534,7 @@ queue_families find_queue_families_(
     vkGetPhysicalDeviceQueueFamilyProperties(device, &family_count, NULL);
 
     VkQueueFamilyProperties* families = (VkQueueFamilyProperties*)malloc(
-        family_count * sizeof(VkQueueFamilyProperties));
+            family_count * sizeof(VkQueueFamilyProperties));
     vkGetPhysicalDeviceQueueFamilyProperties(device, &family_count, families);
 
     printf("  - Found %i queue families\n", family_count);
@@ -560,9 +564,9 @@ queue_families find_queue_families_(
         }
 
         if(indices.graphics_family_index != -1 && 
-            indices.present_family_index != -1) {
-                indices.is_complete = true;
-                break;
+                indices.present_family_index != -1) {
+            indices.is_complete = true;
+            break;
         }
     }
 
@@ -584,25 +588,25 @@ swapchain_details get_swapchain_support_(VkPhysicalDevice device, VkSurfaceKHR s
     swapchain_details scd = {};
 
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface,
-        &scd.capabilities);
+            &scd.capabilities);
 
     vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &scd.num_formats,
-        NULL);
+            NULL);
 
     if(scd.num_formats != 0) {
         scd.formats = (VkSurfaceFormatKHR*)malloc(
-            sizeof(VkSurfaceFormatKHR) * scd.num_formats);
+                sizeof(VkSurfaceFormatKHR) * scd.num_formats);
         vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface,
-            &scd.num_formats, scd.formats);
+                &scd.num_formats, scd.formats);
     }
 
     vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface,
-        &scd.num_present_modes, NULL);
+            &scd.num_present_modes, NULL);
     if(scd.num_present_modes != 0) {
         scd.present_modes = (VkPresentModeKHR*)malloc(
-            sizeof(VkPresentModeKHR) * scd.num_present_modes);
+                sizeof(VkPresentModeKHR) * scd.num_present_modes);
         vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface,
-            &scd.num_present_modes, scd.present_modes);
+                &scd.num_present_modes, scd.present_modes);
     }
 
     return scd;
@@ -620,13 +624,13 @@ swapchain_details get_swapchain_support_(VkPhysicalDevice device, VkSurfaceKHR s
  *   Chosen VkSurfaceFormatKHR
  */
 VkSurfaceFormatKHR choose_swap_surface_format_(
-    VkSurfaceFormatKHR* formats,
-     uint32_t num_formats
-) {
+        VkSurfaceFormatKHR* formats,
+        uint32_t num_formats
+        ) {
     // prefered is nonlinear SRGB color space & B8G8R8A8 format
     for(uint32_t i = 0; i < num_formats; i++) {
         if(formats[i].format == VK_FORMAT_B8G8R8A8_SRGB && 
-           formats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR){
+                formats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR){
 
             printf("Found ideal swap surface format\n");
             return formats[i];
@@ -650,9 +654,9 @@ VkSurfaceFormatKHR choose_swap_surface_format_(
  *   Chosen VkPresentModeKHR
  */
 VkPresentModeKHR choose_present_mode_(
-    VkPresentModeKHR* present_modes,
-    uint32_t num_present_modes
-) {
+        VkPresentModeKHR* present_modes,
+        uint32_t num_present_modes
+        ) {
     for(uint32_t i = 0; i < num_present_modes; i++) {
         if(present_modes[i] == VK_PRESENT_MODE_MAILBOX_KHR) {
             printf("Found desired mailbox present mode\n");
@@ -683,9 +687,9 @@ VkExtent2D choose_swap_extent_(const VkSurfaceCapabilitiesKHR* const capabilitie
         VkExtent2D actual_extent = { WIDTH, HEIGHT };
 
         actual_extent.width = fmax(capabilities->minImageExtent.width,
-            fmin(capabilities->maxImageExtent.width, actual_extent.width));
+                fmin(capabilities->maxImageExtent.width, actual_extent.width));
         actual_extent.height = fmax(capabilities->minImageExtent.height,
-            fmin(capabilities->maxImageExtent.height, actual_extent.height));
+                fmin(capabilities->maxImageExtent.height, actual_extent.height));
 
         return actual_extent;
     }
@@ -751,7 +755,7 @@ bool create_logical_device_(vk_app* app) {
     }
 
     VkResult success = vkCreateDevice(app->physical_device, 
-        &device_create_info, NULL, &app->device);
+            &device_create_info, NULL, &app->device);
 
     if(success != VK_SUCCESS) {
         fprintf(stderr, "Unable to create logical device\n");
@@ -776,9 +780,9 @@ bool create_swapchain_(vk_app* app) {
     swapchain_details scd = get_swapchain_support_(app->physical_device, app->surface);
 
     app->swapchain_format = choose_swap_surface_format_(
-        scd.formats, scd.num_formats);
+            scd.formats, scd.num_formats);
     VkPresentModeKHR present_mode = choose_present_mode_(
-        scd.present_modes, scd.num_present_modes);
+            scd.present_modes, scd.num_present_modes);
     app->swapchain_extent = choose_swap_extent_(&scd.capabilities);
 
     uint32_t img_count = scd.capabilities.minImageCount + 1;
@@ -801,7 +805,7 @@ bool create_swapchain_(vk_app* app) {
     create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
     queue_families indices = find_queue_families_(app->physical_device,
-        app->surface);
+            app->surface);
     uint32_t queue_fam_indices[] = {
         indices.graphics_family_index,
         indices.present_family_index
@@ -826,24 +830,24 @@ bool create_swapchain_(vk_app* app) {
     create_info.oldSwapchain = VK_NULL_HANDLE;
 
     VkResult result = vkCreateSwapchainKHR(app->device,
-        &create_info, NULL, &app->swapchain);
+            &create_info, NULL, &app->swapchain);
 
     if(result == VK_SUCCESS) {
         result = vkGetSwapchainImagesKHR(app->device, app->swapchain,
-            &app->swapchain_image_count, NULL);
+                &app->swapchain_image_count, NULL);
 
         printf("Swapchain has %i images\n", app->swapchain_image_count);
         if(app->swapchain_image_count > 0) {
             app->swapchain_images = malloc(
-                sizeof(VkImage) * app->swapchain_image_count
-            );
+                    sizeof(VkImage) * app->swapchain_image_count
+                    );
 
             result = vkGetSwapchainImagesKHR(
-                app->device,
-                app->swapchain,
-                &app->swapchain_image_count,
-                app->swapchain_images
-            );
+                    app->device,
+                    app->swapchain,
+                    &app->swapchain_image_count,
+                    app->swapchain_images
+                    );
         }
     }
 
@@ -862,8 +866,8 @@ bool create_swapchain_(vk_app* app) {
 bool create_image_views_(vk_app* app) {
 
     app->swapchain_image_views = (VkImageView*)malloc(
-        sizeof(VkImageView) * app->swapchain_image_count
-    );
+            sizeof(VkImageView) * app->swapchain_image_count
+            );
 
     bool success = true;
     for(uint32_t i = 0; i < app->swapchain_image_count; i++) {
@@ -887,11 +891,11 @@ bool create_image_views_(vk_app* app) {
         create_info.subresourceRange.layerCount = 1;
 
         VkResult result = vkCreateImageView(
-            app->device,
-            &create_info,
-            NULL,
-            &app->swapchain_image_views[i]
-        );
+                app->device,
+                &create_info,
+                NULL,
+                &app->swapchain_image_views[i]
+                );
 
         success &= (result == VK_SUCCESS);
     }
@@ -906,22 +910,58 @@ bool create_image_views_(vk_app* app) {
     return success;
 }
 
+bool create_render_pass_(vk_app* app) {
+    VkAttachmentDescription color_attachment = {};
+    color_attachment.format = app->swapchain_format.format;
+    color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    color_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    color_attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+    // This references the layout(location = 0) out vec4 outColor in shader
+    VkAttachmentReference color_attachment_ref = {};
+    color_attachment_ref.attachment = 0;
+    color_attachment_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    VkSubpassDescription subpass = {};
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass.colorAttachmentCount = 1;
+    subpass.pColorAttachments = &color_attachment_ref;
+
+    VkRenderPassCreateInfo pass_info = {};
+    pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    pass_info.attachmentCount = 1;
+    pass_info.pAttachments = &color_attachment;
+    pass_info.subpassCount = 1;
+    pass_info.pSubpasses = &subpass;
+
+    VkResult result = vkCreateRenderPass(app->device,
+        &pass_info,
+        NULL,
+        &app->render_pass);
+
+    return result == VK_SUCCESS;    
+}
+
 bool create_graphics_pipeline_(vk_app* app) {
 
     size_t vert_size;
     uint32_t* vert_code = read_file("vert.spv", &vert_size);
 
     if(vert_code == NULL) {
-		fprintf(stderr, "Failed to read shader code from \"vert.spv\"\n");
-		return false;
-	}
+        fprintf(stderr, "Failed to read shader code from \"vert.spv\"\n");
+        return false;
+    }
 
     size_t frag_size;
     uint32_t* frag_code = read_file("frag.spv", &frag_size);
     if(frag_code == NULL) {
-		fprintf(stderr, "Failed to read shader code from \"frag.spv\"\n");
-		return false;
-	}
+        fprintf(stderr, "Failed to read shader code from \"frag.spv\"\n");
+        return false;
+    }
 
     // Shaders
     VkShaderModule vert_module = create_shader_module(app, vert_code, vert_size);
@@ -1037,9 +1077,9 @@ bool create_graphics_pipeline_(vk_app* app) {
     pipeline_layout.pPushConstantRanges = NULL;
 
     VkResult result = vkCreatePipelineLayout(app->device,
-        &pipeline_layout,
-        NULL,
-        &app->pipeline_layout);
+            &pipeline_layout,
+            NULL,
+            &app->pipeline_layout);
 
     if(result == VK_SUCCESS) {
         printf("Successfully created pipeline layout\n");
@@ -1067,7 +1107,7 @@ VkShaderModule create_shader_module(vk_app* app, const uint32_t* code, size_t co
 
     VkShaderModule module;
     VkResult result = vkCreateShaderModule(app->device, 
-        &info, NULL, &module);
+            &info, NULL, &module);
 
     if(result != VK_SUCCESS) {
         fprintf(stderr, "Could not create shader module");
@@ -1080,11 +1120,11 @@ VkShaderModule create_shader_module(vk_app* app, const uint32_t* code, size_t co
  * Debug utils messenger callback method.
  */
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(
-    VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-    VkDebugUtilsMessageTypeFlagsEXT messageType,
-    const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-    void* pUserData
-) {
+        VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+        VkDebugUtilsMessageTypeFlagsEXT messageType,
+        const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+        void* pUserData
+        ) {
     fprintf(stderr, "Validation layer: %s", pCallbackData->pMessage);
     return VK_FALSE;
 }
