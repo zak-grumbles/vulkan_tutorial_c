@@ -106,6 +106,8 @@ void run_vk_app(vk_app* app) {
  */
 void cleanup_vk_app(vk_app* app) {
 
+    vkDestroyPipeline(app->device, app->graphics_pipeline, NULL);
+
     vkDestroyPipelineLayout(app->device, app->pipeline_layout, NULL);
 
     vkDestroyRenderPass(app->device, app->render_pass, NULL);
@@ -1086,6 +1088,36 @@ bool create_graphics_pipeline_(vk_app* app) {
     }
     else {
         fprintf(stderr, "Failed to create pipeline layout\n");
+    }
+
+
+    VkGraphicsPipelineCreateInfo pipeline_info = {};
+    pipeline_info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    pipeline_info.stageCount = 2;
+    pipeline_info.pStages = shader_stages;
+    pipeline_info.pVertexInputState = &vert_input_info;
+    pipeline_info.pInputAssemblyState = &input_assembly_info;
+    pipeline_info.pViewportState = &vp_info;
+    pipeline_info.pRasterizationState = &rast_info;
+    pipeline_info.pMultisampleState = &multi_info;
+    pipeline_info.pDepthStencilState = NULL;
+    pipeline_info.pColorBlendState = &blend_info;
+    pipeline_info.pDynamicState = NULL;
+
+    pipeline_info.layout = app->pipeline_layout;
+    pipeline_info.renderPass = app->render_pass;
+    pipeline_info.subpass = 0;
+    pipeline_info.basePipelineHandle = VK_NULL_HANDLE;
+    pipeline_info.basePipelineIndex = -1;
+
+    result = vkCreateGraphicsPipelines(app->device, VK_NULL_HANDLE,
+        1, &pipeline_info, NULL, &app->graphics_pipeline);
+
+    if(result == VK_SUCCESS) {
+        printf("Successfully created graphics pipeline\n");
+    }
+    else {
+        fprintf(stderr, "Failed to create graphics pipeline\n");
     }
 
     vkDestroyShaderModule(app->device, frag_module, NULL);

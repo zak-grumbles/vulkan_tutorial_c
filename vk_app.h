@@ -51,6 +51,8 @@ typedef struct {
 
     VkRenderPass render_pass;
     VkPipelineLayout pipeline_layout;
+
+    VkPipeline graphics_pipeline;
 } vk_app;
 
 // "Public" interface
