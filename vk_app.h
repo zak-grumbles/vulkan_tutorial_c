@@ -59,6 +59,13 @@ typedef struct {
     VkCommandPool cmd_pool;
     VkCommandBuffer* cmd_buffers;
     uint32_t cmd_buffer_count;
+
+    VkSemaphore* image_available;
+    VkSemaphore* render_finished;
+    VkFence* in_flight;
+    VkFence* imgs_in_flight;
+
+    size_t current_frame;
 } vk_app;
 
 // "Public" interface

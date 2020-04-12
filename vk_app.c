@@ -15,6 +15,7 @@ const bool ENABLE_VALIDATION_LAYERS = true;
 
 const int WIDTH = 800;
 const int HEIGHT = 600;
+const int MAX_FRAMES_IN_FLIGHT = 2;
 
 // Validation layers
 const char* VALIDATION_LAYERS[] = {
@@ -62,6 +63,10 @@ bool create_framebuffers_(vk_app*);
 bool create_cmd_pool_(vk_app*);
 bool create_cmd_buffers_(vk_app*);
 
+bool create_sync_objects_(vk_app*);
+
+void draw_frame_(vk_app*);
+
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(
         VkDebugUtilsMessageSeverityFlagBitsEXT,
         VkDebugUtilsMessageTypeFlagsEXT,
@@ -98,7 +103,10 @@ bool init_vk_app(vk_app* app) {
 void run_vk_app(vk_app* app) {
     while(!glfwWindowShouldClose(app->app_window)) {
         glfwPollEvents();
+        draw_frame_(app);
     }
+
+    vkDeviceWaitIdle(app->device);
 }
 
 /**
@@ -108,6 +116,23 @@ void run_vk_app(vk_app* app) {
  *   app - vulkan app
  */
 void cleanup_vk_app(vk_app* app) {
+
+    for(int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        vkDestroySemaphore(app->device, app->render_finished[i], NULL);
+        vkDestroySemaphore(app->device, app->image_available[i], NULL);
+        vkDestroyFence(app->device, app->in_flight[i], NULL);
+    }
+    free(app->image_available);
+    app->image_available = NULL;
+
+    free(app->render_finished);
+    app->render_finished = NULL;
+
+    free(app->in_flight);
+    app->in_flight = NULL;
+
+    free(app->imgs_in_flight);
+    app->imgs_in_flight = NULL;
 
     vkDestroyCommandPool(app->device, app->cmd_pool, NULL);
 
@@ -173,6 +198,8 @@ void init_window_(vk_app* app) {
 bool init_vulkan_(vk_app* app) {
     bool success = true;
 
+    app->current_frame = 0;
+
     success = init_instance_(app);
 
     if(success && ENABLE_VALIDATION_LAYERS) {
@@ -189,6 +216,7 @@ bool init_vulkan_(vk_app* app) {
     if(success) success &= create_framebuffers_(app);
     if(success) success &= create_cmd_pool_(app);
     if(success) success &= create_cmd_buffers_(app);
+    if(success) success &= create_sync_objects_(app);
 
     return success;
 }
@@ -945,12 +973,22 @@ bool create_render_pass_(vk_app* app) {
     subpass.colorAttachmentCount = 1;
     subpass.pColorAttachments = &color_attachment_ref;
 
+    VkSubpassDependency dep = {};
+    dep.srcSubpass = VK_SUBPASS_EXTERNAL;
+    dep.dstSubpass = 0;
+    dep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dep.srcAccessMask = 0;
+    dep.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dep.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
     VkRenderPassCreateInfo pass_info = {};
     pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
     pass_info.attachmentCount = 1;
     pass_info.pAttachments = &color_attachment;
     pass_info.subpassCount = 1;
     pass_info.pSubpasses = &subpass;
+    pass_info.dependencyCount = 1;
+    pass_info.pDependencies = &dep;
 
     VkResult result = vkCreateRenderPass(app->device,
         &pass_info,
@@ -1294,6 +1332,91 @@ bool create_cmd_buffers_(vk_app* app) {
     }
 
     return success;
+}
+
+bool create_sync_objects_(vk_app* app) {
+    app->image_available = (VkSemaphore*)malloc(sizeof(VkSemaphore) * MAX_FRAMES_IN_FLIGHT);
+    app->render_finished = (VkSemaphore*)malloc(sizeof(VkSemaphore) * MAX_FRAMES_IN_FLIGHT);
+    app->in_flight = (VkFence*)malloc(sizeof(VkFence) * MAX_FRAMES_IN_FLIGHT);
+
+    app->imgs_in_flight = (VkFence*)malloc(sizeof(VkFence) * MAX_FRAMES_IN_FLIGHT);
+    for(int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        app->imgs_in_flight[i] = VK_NULL_HANDLE;
+    }
+
+    VkSemaphoreCreateInfo sem_info = {};
+    sem_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+    VkFenceCreateInfo fence_info = {};
+    fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+    
+    for(int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        vkCreateSemaphore(app->device, &sem_info, NULL, &app->image_available[i]);
+        vkCreateSemaphore(app->device, &sem_info, NULL, &app->render_finished[i]);
+        vkCreateFence(app->device, &fence_info, NULL, &app->in_flight[i]);
+    }
+
+    return true;
+}
+
+void draw_frame_(vk_app* app) {
+    vkWaitForFences(app->device, 1, &app->in_flight[app->current_frame],
+        VK_TRUE, UINT64_MAX);
+
+    uint32_t image_index;
+    vkAcquireNextImageKHR(app->device, app->swapchain, UINT64_MAX,
+        app->image_available[app->current_frame], VK_NULL_HANDLE,
+        &image_index);
+
+    if(app->imgs_in_flight[image_index] != VK_NULL_HANDLE) {
+        vkWaitForFences(app->device, 1, &app->imgs_in_flight[image_index], VK_TRUE, UINT64_MAX);
+    }
+    app->imgs_in_flight[image_index] = app->in_flight[app->current_frame];
+    
+    VkSemaphore wait_sems[] = {app->image_available[app->current_frame]};
+    VkPipelineStageFlags wait_stages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+
+    VkSubmitInfo submit_info = {};
+    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submit_info.waitSemaphoreCount = 1;
+    submit_info.pWaitSemaphores = wait_sems;
+    submit_info.pWaitDstStageMask = wait_stages;
+
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers = &app->cmd_buffers[image_index];
+
+    VkSemaphore signal_sems[] = {app->render_finished[app->current_frame]};
+    submit_info.signalSemaphoreCount = 1;
+    submit_info.pSignalSemaphores = signal_sems;
+
+    vkResetFences(app->device, 1, &app->in_flight[app->current_frame]);
+    VkResult result = vkQueueSubmit(app->graphics_queue, 1, &submit_info,
+        app->in_flight[app->current_frame]);
+
+    if(result != VK_SUCCESS) {
+        fprintf(stderr, "Unable to submit draw cmd\n");
+        return;
+    }
+
+    VkPresentInfoKHR present = {};
+    present.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    present.waitSemaphoreCount = 1;
+    present.pWaitSemaphores = signal_sems;
+
+    VkSwapchainKHR swap_chains = { app->swapchain };
+    present.swapchainCount = 1;
+    present.pSwapchains = &swap_chains;
+    present.pImageIndices = &image_index;
+    present.pResults = NULL;
+
+    result = vkQueuePresentKHR(app->present_queue, &present);
+
+    if(result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to draw frame");
+    }
+
+    app->current_frame = (app->current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
 VkShaderModule create_shader_module(vk_app* app, const uint32_t* code, size_t code_len) {
