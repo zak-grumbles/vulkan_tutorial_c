@@ -57,8 +57,10 @@ VkPresentModeKHR choose_present_mode_(VkPresentModeKHR*, uint32_t);
 VkExtent2D choose_swap_extent_(const VkSurfaceCapabilitiesKHR* const capabilities);
 bool create_swapchain_(vk_app*);
 bool create_image_views_(vk_app*);
-
 bool create_framebuffers_(vk_app*);
+
+bool create_cmd_pool_(vk_app*);
+bool create_cmd_buffers_(vk_app*);
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(
         VkDebugUtilsMessageSeverityFlagBitsEXT,
@@ -106,6 +108,8 @@ void run_vk_app(vk_app* app) {
  *   app - vulkan app
  */
 void cleanup_vk_app(vk_app* app) {
+
+    vkDestroyCommandPool(app->device, app->cmd_pool, NULL);
 
     for(uint32_t i = 0; i < app->framebuffer_count; i++) {
         vkDestroyFramebuffer(app->device, app->framebuffers[i], NULL);
@@ -183,6 +187,8 @@ bool init_vulkan_(vk_app* app) {
     if(success) success &= create_render_pass_(app);
     if(success) success &= create_graphics_pipeline_(app);
     if(success) success &= create_framebuffers_(app);
+    if(success) success &= create_cmd_pool_(app);
+    if(success) success &= create_cmd_buffers_(app);
 
     return success;
 }
@@ -1177,6 +1183,114 @@ bool create_framebuffers_(vk_app* app) {
     }
     else {
         fprintf(stderr, "Unable to create framebuffers\n");
+    }
+
+    return success;
+}
+
+bool create_cmd_pool_(vk_app* app) {
+    queue_families fams = find_queue_families_(app->physical_device,
+        app->surface);
+
+    VkCommandPoolCreateInfo pool_info = {};
+    pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    pool_info.queueFamilyIndex = fams.graphics_family_index;
+    pool_info.flags = 0;
+
+    VkResult result = vkCreateCommandPool(
+        app->device,
+        &pool_info,
+        NULL,
+        &app->cmd_pool
+    );
+
+    bool success = result == VK_SUCCESS;
+
+    if(success) {
+        printf("Successfully created command pool\n");
+    }
+    else {
+        fprintf(stderr, "Failed to create command pool\n");
+    }
+
+    return success;
+}
+
+bool create_cmd_buffers_(vk_app* app) {
+
+    // Cmd buffer per framebuffer
+    app->cmd_buffer_count = app->framebuffer_count;
+    app->cmd_buffers = (VkCommandBuffer*)malloc(
+        sizeof(VkCommandBuffer) * app->cmd_buffer_count);
+
+    VkCommandBufferAllocateInfo buf_info = {};
+    buf_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    buf_info.commandPool = app->cmd_pool;
+    buf_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    buf_info.commandBufferCount = app->cmd_buffer_count;
+
+    bool success = vkAllocateCommandBuffers(app->device, &buf_info, app->cmd_buffers) == VK_SUCCESS;
+
+    if(success) {
+        printf("Successfully created %i command buffers\n", app->cmd_buffer_count);
+    }
+    else {
+        fprintf(stderr, "Unable to create command buffers\n");
+        return success;
+    }
+
+    VkResult result = VK_SUCCESS;
+    for(uint32_t i = 0; i < app->cmd_buffer_count && result == VK_SUCCESS; i++) {
+        VkCommandBufferBeginInfo beg_info = {};
+        beg_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beg_info.flags = 0;
+        beg_info.pInheritanceInfo = NULL;
+
+        result = vkBeginCommandBuffer(app->cmd_buffers[i], &beg_info);
+
+        if(result != VK_SUCCESS) {
+            fprintf(stderr, "Unable to begin cmd buffer %i\n", i);
+            break;
+        }
+
+        VkRenderPassBeginInfo pass_info = {};
+        pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        pass_info.renderPass = app->render_pass;
+        pass_info.framebuffer = app->framebuffers[i];
+
+        VkOffset2D offset = {0, 0};
+        pass_info.renderArea.offset = offset;
+        pass_info.renderArea.extent = app->swapchain_extent;
+
+        VkClearValue clearColor = {0.0f, 0.0f, 0.0f, 1.0f};
+        pass_info.clearValueCount = 1;
+        pass_info.pClearValues = &clearColor;
+
+        vkCmdBeginRenderPass(app->cmd_buffers[i], &pass_info, VK_SUBPASS_CONTENTS_INLINE);
+
+        vkCmdBindPipeline(app->cmd_buffers[i],
+            VK_PIPELINE_BIND_POINT_GRAPHICS,
+            app->graphics_pipeline);
+
+        vkCmdDraw(app->cmd_buffers[i], 3, 1, 0, 0);
+
+        vkCmdEndRenderPass(app->cmd_buffers[i]);
+
+        result = vkEndCommandBuffer(app->cmd_buffers[i]);
+
+        if(result != VK_SUCCESS) {
+            fprintf(stderr, "Unable to fill cmd buffer %i\n", i);
+            break;
+        }
+    }
+
+    success = result == VK_SUCCESS;
+
+    if(success) {
+        printf("Successfully initialized command buffers\n");
+    }
+    else {
+        fprintf(stderr, "Unable to initialize command buffers\n");
     }
 
     return success;

@@ -55,6 +55,10 @@ typedef struct {
 
     VkFramebuffer* framebuffers;
     uint32_t framebuffer_count;
+
+    VkCommandPool cmd_pool;
+    VkCommandBuffer* cmd_buffers;
+    uint32_t cmd_buffer_count;
 } vk_app;
 
 // "Public" interface
