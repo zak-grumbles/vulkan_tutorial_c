@@ -58,6 +58,7 @@ VkExtent2D choose_swap_extent_(const VkSurfaceCapabilitiesKHR* const capabilitie
 bool create_swapchain_(vk_app*);
 bool create_image_views_(vk_app*);
 
+bool create_framebuffers_(vk_app*);
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(
         VkDebugUtilsMessageSeverityFlagBitsEXT,
@@ -105,6 +106,10 @@ void run_vk_app(vk_app* app) {
  *   app - vulkan app
  */
 void cleanup_vk_app(vk_app* app) {
+
+    for(uint32_t i = 0; i < app->framebuffer_count; i++) {
+        vkDestroyFramebuffer(app->device, app->framebuffers[i], NULL);
+    }
 
     vkDestroyPipeline(app->device, app->graphics_pipeline, NULL);
 
@@ -177,6 +182,7 @@ bool init_vulkan_(vk_app* app) {
     if(success) success &= create_image_views_(app);
     if(success) success &= create_render_pass_(app);
     if(success) success &= create_graphics_pipeline_(app);
+    if(success) success &= create_framebuffers_(app);
 
     return success;
 }
@@ -1090,7 +1096,6 @@ bool create_graphics_pipeline_(vk_app* app) {
         fprintf(stderr, "Failed to create pipeline layout\n");
     }
 
-
     VkGraphicsPipelineCreateInfo pipeline_info = {};
     pipeline_info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
     pipeline_info.stageCount = 2;
@@ -1129,6 +1134,52 @@ bool create_graphics_pipeline_(vk_app* app) {
     vert_code = NULL;
 
     return result == VK_SUCCESS;
+}
+
+bool create_framebuffers_(vk_app* app) {
+
+    // will have as many framebuffers as we do swapchain images
+    app->framebuffer_count = app->swapchain_image_count;
+
+    app->framebuffers = (VkFramebuffer*)malloc(sizeof(VkFramebuffer) * app->framebuffer_count);
+    
+    VkResult result = VK_SUCCESS;
+    for(uint32_t i = 0; i < app->swapchain_image_count && result == VK_SUCCESS; i++) {
+        VkImageView attachments[] = {
+            app->swapchain_image_views[i]
+        };
+
+        VkFramebufferCreateInfo buf_info = {};
+        buf_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        buf_info.renderPass = app->render_pass;
+        buf_info.attachmentCount = 1;
+        buf_info.pAttachments = attachments;
+        buf_info.width = app->swapchain_extent.width;
+        buf_info.height = app->swapchain_extent.height;
+        buf_info.layers = 1;
+
+        result = vkCreateFramebuffer(
+            app->device,
+            &buf_info,
+            NULL,
+            &app->framebuffers[i]
+        );
+
+        if(result != VK_SUCCESS) {
+            fprintf(stderr, "Unable to create framebuffer %i\n", i);
+        }
+    }
+
+    bool success = (result == VK_SUCCESS);
+
+    if(success) {
+        printf("Successfully created framebuffers\n");
+    }
+    else {
+        fprintf(stderr, "Unable to create framebuffers\n");
+    }
+
+    return success;
 }
 
 VkShaderModule create_shader_module(vk_app* app, const uint32_t* code, size_t code_len) {

@@ -51,8 +51,10 @@ typedef struct {
 
     VkRenderPass render_pass;
     VkPipelineLayout pipeline_layout;
-
     VkPipeline graphics_pipeline;
+
+    VkFramebuffer* framebuffers;
+    uint32_t framebuffer_count;
 } vk_app;
 
 // "Public" interface
